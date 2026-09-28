@@ -234,11 +234,38 @@ export function LimboScene({
             velocity[o + 2] -= (toZ / r) * push * dt;
           }
         } else if (follow > 0 && gap < STRAY_REACH) {
-          const pull = (STRAY_PULL / (r * r)) * follow;
-          velocity[o] += (toX / r) * pull * dt;
-          velocity[o + 1] += (toY / r) * pull * dt;
-          velocity[o + 2] += (toZ / r) * pull * dt;
-          if (gap < 0.05) {
+          const dir = Math.max(radial, 1e-4);
+          const nx = toX / dir;
+          const ny = toY / dir;
+          const nz = toZ / dir;
+          // Ease off in the last stretch. Inverse-square would speed up into the surface.
+          const settle = smoothstep(0.32, 0.05, gap);
+          const softened = Math.max(radial, 0.9);
+          const pull = (STRAY_PULL / (softened * softened)) * follow * (1 - settle);
+          velocity[o] += nx * pull * dt;
+          velocity[o + 1] += ny * pull * dt;
+          velocity[o + 2] += nz * pull * dt;
+          const toward = velocity[o] * nx + velocity[o + 1] * ny + velocity[o + 2] * nz;
+          const glide = 0.2;
+          if (toward > glide) {
+            const excess = (toward - glide) * settle;
+            velocity[o] -= nx * excess;
+            velocity[o + 1] -= ny * excess;
+            velocity[o + 2] -= nz * excess;
+          }
+          if (gap < 0.06) {
+            const ox = positions[o] - orbX;
+            const oy = positions[o + 1] - orbY;
+            const oz = positions[o + 2];
+            const len = Math.hypot(ox, oy, oz) || 1;
+            const homeR = Math.hypot(home[o], home[o + 1], home[o + 2]) || RADIUS;
+            const sx = (ox / len) * homeR;
+            const sy = (oy / len) * homeR;
+            const sz = (oz / len) * homeR;
+            home[o] = sx * cos - sz * sin;
+            home[o + 1] = sy;
+            home[o + 2] = sx * sin + sz * cos;
+            phase[i] = Math.atan2(oy, ox) - time * (2.6 + (i % 5) * 0.18);
             mode[i] = SHELL;
             velocity[o] = 0;
             velocity[o + 1] = 0;
