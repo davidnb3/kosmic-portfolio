@@ -27,4 +27,8 @@ Exit world links to `/` with `{ entered: true }` and lands already zoomed into L
 
 ## Limbo layout
 
-Music is the left portal, Software is the right. The title sits across a rotating particle orb. A pointer passing through it disturbs the particles. A pointer moving out to either portal collapses them into a tight orbit around the cursor. Do not move the portals to opposite corners.
+Music is the left portal, Software is the right. The title sits across a rotating particle orb drawn in `LimboScene.tsx` (one point cloud). The pointer moves that orb across the page, horizontally and vertically. Passing through it at rest disturbs the shell. Do not move the portals to opposite corners.
+
+Compression follows horizontal distance from the center. It starts once the pointer leaves the middle and eases down, reaching a tight orbit around the cursor only on a world button (Enter sound / Enter code). Vertical movement translates the orb and does not by itself collapse it. Do not hold the full sphere until the button, and do not finish the collapse beside the title.
+
+The shell sheds one or two particles every 4–5 seconds, chosen at random. The outward push is strongest beside the orb and fades with distance, then those particles drift. A stray is pulled only once the orb is near. The pull is weak far away and stronger as the stray gets closer. It joins the shell at the surface, and from then on uses the shell’s motion, including when the orb moves quickly. Loose strays stay brighter than the shell so they read on the grid. Reduced motion freezes the spin, the follow, the shed, and the collapse.

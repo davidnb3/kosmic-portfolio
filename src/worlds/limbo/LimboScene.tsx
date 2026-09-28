@@ -12,8 +12,16 @@ import {
 export type LimboPointer = { x: number; y: number; active: boolean };
 
 const COUNT = 5600;
+const LOST_AT_START = 260;
 const RADIUS = 1.08;
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+const SHELL = 0;
+const LOST = 1;
+
+function hash(index: number) {
+  const value = Math.sin(index * 127.1) * 43758.5453;
+  return value - Math.floor(value);
+}
 
 function dotTexture() {
   const canvas = document.createElement("canvas");
@@ -42,7 +50,11 @@ function buildParticles() {
   const positions = new Float32Array(COUNT * 3);
   const colors = new Float32Array(COUNT * 3);
   const home = new Float32Array(COUNT * 3);
+  const velocity = new Float32Array(COUNT * 3);
   const phase = new Float32Array(COUNT);
+  const mode = new Uint8Array(COUNT);
+  const escape = new Float32Array(COUNT);
+
   for (let i = 0; i < COUNT; i += 1) {
     const y = 1 - (i / (COUNT - 1)) * 2;
     const ring = Math.sqrt(Math.max(0, 1 - y * y));
@@ -62,12 +74,35 @@ function buildParticles() {
     colors[o + 1] = shade;
     colors[o + 2] = shade;
   }
+
+  for (let n = 0; n < LOST_AT_START; n += 1) {
+    const i = (n * 97) % COUNT;
+    const o = i * 3;
+    mode[i] = LOST;
+    let lostX = (hash(n) * 2 - 1) * 2.7;
+    let lostY = (hash(n + 40) * 2 - 1) * 1.55;
+    const fromCenter = Math.hypot(lostX, lostY) || 1;
+    if (fromCenter < 1.75) {
+      lostX = (lostX / fromCenter) * 1.75;
+      lostY = (lostY / fromCenter) * 1.75;
+    }
+    positions[o] = lostX;
+    positions[o + 1] = lostY;
+    positions[o + 2] = (hash(n + 80) - 0.5) * 0.35;
+    velocity[o] = (hash(n + 11) - 0.5) * 0.22;
+    velocity[o + 1] = (hash(n + 23) - 0.5) * 0.16;
+    const shade = 0.96;
+    colors[o] = shade;
+    colors[o + 1] = shade;
+    colors[o + 2] = shade;
+  }
+
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new BufferAttribute(positions, 3));
   geometry.setAttribute("color", new BufferAttribute(colors, 3));
   const material = new PointsMaterial({
     map: dotTexture(),
-    size: 0.026,
+    size: 0.034,
     vertexColors: true,
     transparent: true,
     depthWrite: false,
@@ -76,7 +111,7 @@ function buildParticles() {
   });
   const points = new Points(geometry, material);
   points.frustumCulled = false;
-  return { points, geometry, material, home, phase, positions, colors };
+  return { points, geometry, material, home, phase, positions, colors, velocity, mode, escape };
 }
 
 export function LimboScene({
@@ -88,6 +123,8 @@ export function LimboScene({
   const reduceRef = useRef<boolean | null>(null);
   const followed = useRef({ x: 0, y: 0 });
   const spin = useRef(0);
+  const shed = useRef(0);
+  const shedWait = useRef(4 + Math.random());
   const field = useMemo(() => buildParticles(), []);
 
   useEffect(() => {
@@ -106,10 +143,10 @@ export function LimboScene({
     const reduce = reduceRef.current;
     const pointer = pointerRef.current ?? { x: 0, y: 0, active: false };
     const dt = Math.min(delta, 0.05);
-    const follow = 1 - Math.exp(-dt * 2.4);
+    const ease = 1 - Math.exp(-dt * 2.4);
     if (!reduce && pointer.active) {
-      followed.current.x += (pointer.x - followed.current.x) * follow;
-      followed.current.y += (pointer.y - followed.current.y) * follow;
+      followed.current.x += (pointer.x - followed.current.x) * ease;
+      followed.current.y += (pointer.y - followed.current.y) * ease;
     }
     if (!reduce) spin.current += dt * 0.28;
 
@@ -120,50 +157,126 @@ export function LimboScene({
     const aim = followed.current;
     const px = aim.x * halfW;
     const py = aim.y * halfH;
-    const side = pointer.active && !reduce ? smoothstep(0.34, 0.72, Math.abs(aim.x)) : 0;
+    const travel = pointer.active && !reduce ? Math.hypot(aim.x, aim.y) : 0;
+    const follow = pointer.active && !reduce ? smoothstep(0.08, 0.28, travel) : 0;
+    const singularity = pointer.active && !reduce ? smoothstep(0.16, 0.88, Math.abs(aim.x)) : 0;
+    const orbX = px * follow;
+    const orbY = py * follow;
+    const body = RADIUS * (1 - singularity) + 0.2 * singularity;
     const time = reduce ? 0 : performance.now() / 1000;
     const cos = Math.cos(spin.current);
     const sin = Math.sin(spin.current);
 
-    const { positions, colors, home, phase } = field;
+    if (!reduce) {
+      shed.current += dt;
+      if (shed.current > shedWait.current) {
+        shed.current = 0;
+        shedWait.current = 4 + Math.random();
+        const release = 1 + Math.floor(Math.random() * 2);
+        const start = Math.floor(Math.random() * COUNT);
+        let freed = 0;
+        for (let n = 0; n < COUNT && freed < release; n += 1) {
+          const i = (start + n) % COUNT;
+          if (field.mode[i] !== SHELL) continue;
+          const o = i * 3;
+          field.mode[i] = LOST;
+          field.escape[i] = 2.6;
+          const dx = field.positions[o] - orbX;
+          const dy = field.positions[o + 1] - orbY;
+          const dz = field.positions[o + 2];
+          const length = Math.hypot(dx, dy, dz) || 1;
+          const tangent = (Math.random() - 0.5) * 0.04;
+          field.velocity[o] = (dx / length) * 0.04 - (dy / length) * tangent;
+          field.velocity[o + 1] = (dy / length) * 0.04 + (dx / length) * tangent;
+          field.velocity[o + 2] = (dz / length) * 0.02;
+          field.positions[o] += (dx / length) * 0.03;
+          field.positions[o + 1] += (dy / length) * 0.03;
+          freed += 1;
+        }
+      }
+    }
+
+    const { positions, colors, home, phase, velocity, mode, escape } = field;
     for (let i = 0; i < COUNT; i += 1) {
       const o = i * 3;
       const hx = home[o] * cos + home[o + 2] * sin;
       const hy = home[o + 1];
       const hz = -home[o] * sin + home[o + 2] * cos;
+      const orbit = phase[i] + time * (2.6 + (i % 5) * 0.18);
+      const orbitR = 0.05 + (i % 13) * 0.011;
+
+      if (mode[i] === LOST) {
+        const toX = orbX - positions[o];
+        const toY = orbY - positions[o + 1];
+        const toZ = -positions[o + 2];
+        const radial = Math.hypot(toX, toY, positions[o + 2]);
+        const gap = radial - body;
+        const r = Math.max(radial, 0.4);
+        const outward = -(velocity[o] * toX + velocity[o + 1] * toY + velocity[o + 2] * toZ) / r;
+        if (escape[i] > 0) {
+          escape[i] = Math.max(0, escape[i] - dt);
+          if (gap < 1.5 && outward < 0.48) {
+            const push = 0.42 / (r * r);
+            velocity[o] -= (toX / r) * push * dt;
+            velocity[o + 1] -= (toY / r) * push * dt;
+            velocity[o + 2] -= (toZ / r) * push * dt;
+          }
+        } else if (gap < 1.8) {
+          const pull = 0.55 / (r * r);
+          velocity[o] += (toX / r) * pull * dt;
+          velocity[o + 1] += (toY / r) * pull * dt;
+          velocity[o + 2] += (toZ / r) * pull * dt;
+          if (gap < 0.05) {
+            mode[i] = SHELL;
+            velocity[o] = 0;
+            velocity[o + 1] = 0;
+            velocity[o + 2] = 0;
+          }
+        }
+        if (gap > 1.15) {
+          velocity[o] += Math.sin(time * 0.65 + phase[i]) * dt * 0.03;
+          velocity[o + 1] += Math.cos(time * 0.5 + phase[i]) * dt * 0.025;
+        }
+        const drag = 1 - dt * 0.04;
+        velocity[o] *= drag;
+        velocity[o + 1] *= drag;
+        velocity[o + 2] *= drag;
+        positions[o] += velocity[o] * dt;
+        positions[o + 1] += velocity[o + 1] * dt;
+        positions[o + 2] += velocity[o + 2] * dt;
+        if (Math.abs(positions[o]) > halfW * 0.96) velocity[o] *= -0.8;
+        if (Math.abs(positions[o + 1]) > halfH * 0.96) velocity[o + 1] *= -0.8;
+        colors[o] = 1;
+        colors[o + 1] = 1;
+        colors[o + 2] = 1;
+        continue;
+      }
 
       const dx = hx - px;
       const dy = hy - py;
       const dist = Math.hypot(dx, dy);
       const front = smoothstep(-0.15, 0.55, hz / RADIUS);
-      const influence = pointer.active ? smoothstep(0.78, 0.02, dist) * front * (1 - side) : 0;
+      const influence = pointer.active ? smoothstep(0.78, 0.02, dist) * front * (1 - follow) * (1 - singularity) : 0;
       const push = influence * 0.62;
       const inv = dist > 0.0008 ? 1 / dist : 0;
-
-      const orbit = phase[i] + time * (2.6 + (i % 5) * 0.18);
-      const orbitR = 0.05 + (i % 13) * 0.011;
-      const sx = px + Math.cos(orbit) * orbitR;
-      const sy = py + Math.sin(orbit) * orbitR;
-      const sz = Math.sin(orbit * 2) * orbitR * 0.35;
-
       const looseX = hx + dx * inv * push;
       const looseY = hy + dy * inv * push;
       const looseZ = hz + influence * 0.22;
-      const targetX = looseX + (sx - looseX) * side;
-      const targetY = looseY + (sy - looseY) * side;
-      const targetZ = looseZ + (sz - looseZ) * side;
-
+      const targetX = orbX + looseX * (1 - singularity) + Math.cos(orbit) * orbitR * singularity;
+      const targetY = orbY + looseY * (1 - singularity) + Math.sin(orbit) * orbitR * singularity;
+      const targetZ = looseZ * (1 - singularity) + Math.sin(orbit * 2) * orbitR * 0.35 * singularity;
       const lag = 1 - Math.exp(-dt * (3.1 + (i % 6) * 0.2));
       positions[o] += (targetX - positions[o]) * lag;
       positions[o + 1] += (targetY - positions[o + 1]) * lag;
       positions[o + 2] += (targetZ - positions[o + 2]) * lag;
 
       const rim = Math.pow(1 - Math.min(1, Math.abs(hz) / RADIUS), 0.6);
-      const shade = side > 0.2 ? 0.55 + side * 0.45 : 0.22 + rim * 0.78;
+      const shade = singularity > 0.2 ? 0.55 + singularity * 0.45 : 0.22 + rim * 0.78;
       colors[o] = shade;
       colors[o + 1] = shade;
       colors[o + 2] = shade;
     }
+
     field.geometry.attributes.position.needsUpdate = true;
     field.geometry.attributes.color.needsUpdate = true;
   });

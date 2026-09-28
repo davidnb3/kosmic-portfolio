@@ -1,32 +1,38 @@
-# React + TypeScript + Vite
+# Kosmic Portfolio
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+David Pieri’s portfolio, based in Luxembourg. The site is three worlds in one session: a dark threshold, a light music studio, and a dark code editor.
 
-Currently, two official plugins are available:
+## What it is
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The first view is a still of a retro studio. Scrolling zooms into the monitor until the glass fills the browser. The page on that glass is the live Limbo view, not a picture of it, so the zoom lands on the same layout the visitor then uses.
 
-## React Compiler
+**Limbo** (`/`) is the threshold. A rotating particle orb sits behind the title. The pointer moves it across the page. Passing through it disturbs the shell. Moving toward a side gradually compresses it, until it becomes a tight orbit on **Enter sound** or **Enter code**. The orb sheds stray particles and takes them back only when it passes very close. Once a stray rejoins, it moves and shades with the rest of the shell.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**Music** (`/music`) is a light, Ableton-style arrangement view. It is visual only: there is no audio engine. Clips, track controls, and the playhead persist while you stay on the site.
 
-## Expanding the Oxlint configuration
+**Software** (`/software`) is a dark editor. Project files live under `src/projects` and open as tabs. The arrangement and the open tabs are kept above the router, so leaving a world and coming back does not reset that session.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+Limbo and the editor stay dark. The DAW stays light. There is no theme toggle in the page chrome.
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+Leaving Music or Software returns to Limbo already zoomed into the monitor.
+
+## Local setup
+
+Requires Node.js 20.19+ or 22.12+.
+
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open the local URL Vite prints. Scroll the studio until the monitor fills the window, then choose a world.
+
+```bash
+npm run build    # typecheck and production build
+npm run preview  # serve the build
+npm run lint
+```
+
+## Stack
+
+Vite, React 19, TypeScript, Tailwind CSS, React Router, Framer Motion, GSAP, and React Three Fiber.
