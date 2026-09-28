@@ -4,8 +4,11 @@ import {
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
+  Euler,
   Points,
   PointsMaterial,
+  Vector3,
+  type Group,
   type PerspectiveCamera,
 } from "three";
 
@@ -14,9 +17,17 @@ export type LimboPointer = { x: number; y: number; active: boolean };
 const COUNT = 5600;
 const LOST_AT_START = 260;
 const RADIUS = 1.08;
+/** Pitch and yaw of the whole cloud. Shell and strays stay on one angled plane. */
+const SCENE_TILT: [number, number, number] = [0, 0, 0];
+const tiltEuler = new Euler(SCENE_TILT[0], SCENE_TILT[1], SCENE_TILT[2]);
+const tiltPoint = new Vector3();
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 const SHELL = 0;
 const LOST = 1;
+/** Draw on a stray. Off at rest; only strays in STRAY_REACH feel it, and only once the orb has left center. */
+const STRAY_PULL = 0.16;
+/** Gap outside the shell where a stray can be drawn. Wider than this, it keeps drifting. */
+const STRAY_REACH = 0.7;
 
 function hash(index: number) {
   const value = Math.sin(index * 127.1) * 43758.5453;
@@ -120,6 +131,7 @@ export function LimboScene({
   blendRef: RefObject<number>;
   pointerRef: RefObject<LimboPointer>;
 }) {
+  const groupRef = useRef<Group>(null);
   const reduceRef = useRef<boolean | null>(null);
   const followed = useRef({ x: 0, y: 0 });
   const spin = useRef(0);
@@ -221,8 +233,8 @@ export function LimboScene({
             velocity[o + 1] -= (toY / r) * push * dt;
             velocity[o + 2] -= (toZ / r) * push * dt;
           }
-        } else if (gap < 1.8) {
-          const pull = 0.55 / (r * r);
+        } else if (follow > 0 && gap < STRAY_REACH) {
+          const pull = (STRAY_PULL / (r * r)) * follow;
           velocity[o] += (toX / r) * pull * dt;
           velocity[o + 1] += (toY / r) * pull * dt;
           velocity[o + 2] += (toZ / r) * pull * dt;
@@ -279,7 +291,20 @@ export function LimboScene({
 
     field.geometry.attributes.position.needsUpdate = true;
     field.geometry.attributes.color.needsUpdate = true;
+
+    const group = groupRef.current;
+    if (group) {
+      tiltPoint.set(orbX, orbY, 0).applyEuler(tiltEuler);
+      group.position.set(orbX - tiltPoint.x, orbY - tiltPoint.y, -tiltPoint.z);
+      document.documentElement.dataset.limbo = `${state.scene.children.length}:${state.scene.children
+        .map((child) => `${child.type}${child.children.length}`)
+        .join(",")}`;
+    }
   });
 
-  return <primitive object={field.points} />;
+  return (
+    <group ref={groupRef} rotation={SCENE_TILT}>
+      <primitive object={field.points} />
+    </group>
+  );
 }
