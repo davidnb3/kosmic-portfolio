@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, type PointerEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
 import { site } from "../../config/site";
-import { LimboScene } from "./LimboScene";
+import { LimboScene, type LimboPointer } from "./LimboScene";
 
 const codeBits = [
   { label: "01011  FUNCTION", top: "16%", right: "3%" },
@@ -17,6 +17,7 @@ export function LimboPage() {
   const navigate = useNavigate();
   const rootRef = useRef<HTMLElement>(null);
   const blendRef = useRef(0.5);
+  const pointerRef = useRef<LimboPointer>({ x: 0, y: 0, active: false });
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -55,6 +56,9 @@ export function LimboPage() {
     const root = rootRef.current;
     if (!root) return;
     root.dataset.target = String(event.clientX / window.innerWidth);
+    pointerRef.current.x = (event.clientX / window.innerWidth) * 2 - 1;
+    pointerRef.current.y = 1 - (event.clientY / window.innerHeight) * 2;
+    pointerRef.current.active = true;
   };
 
   return (
@@ -118,11 +122,9 @@ export function LimboPage() {
           dpr={[1, 1.6]}
           gl={{ alpha: true, antialias: true }}
         >
-          <LimboScene blendRef={blendRef} />
+          <LimboScene blendRef={blendRef} pointerRef={pointerRef} />
         </Canvas>
       </div>
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-52 w-52 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/15" />
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-64 w-40 -translate-x-1/2 -translate-y-1/2 rotate-[24deg] rounded-[50%] border border-dashed border-white/25" />
 
       <div className="relative z-10 flex h-full flex-col">
         <header className="limbo-fade flex items-center justify-between px-6 py-4 sm:px-8">

@@ -1,0 +1,30 @@
+---
+description: Site architecture — worlds, Limbo, and the studio monitor
+alwaysApply: true
+---
+
+# Site architecture
+
+David Pieri’s portfolio (Luxembourg). Three worlds, one persistent session. DAW arrangement and editor tabs live in providers above the router (`DawProvider`, `SoftwareProvider`).
+
+| World | Route | What it is |
+| --- | --- | --- |
+| Limbo | `/` | The threshold. Choose Music or Software. |
+| Music | `/music` | A light Ableton-style DAW. Visual only, no audio engine. |
+| Software | `/software` | A dark code editor. Projects live under `src/projects` in the file tree. |
+
+Limbo is dark. The DAW stays light. The editor stays dark. There is no theme toggle in the chrome.
+
+`/` is `ArrivalPage` and is rendered outside the Framer Motion wrapper. A transform ancestor breaks the sticky zoom. Other routes fade opacity only.
+
+## Arrival
+
+The first view is a still of a retro studio (`public/studio.png`) with a widescreen monitor. Scrolling zooms into the glass until it fills the browser. The zoom window matches the viewport’s aspect, so the bezel leaves on all four sides together.
+
+**The page on the monitor is the real `LimboPage`, not a picture of it.** It is laid out at viewport size and CSS-scaled into the measured glass (`SCREEN` in `ArrivalPage.tsx`). The same component the visitor enters is already on the glass, so the zoom must not crossfade a baked UI over a different layout. The Canvas uses `resize={{ offsetSize: true }}` so it measures layout size, not the transformed box.
+
+Exit world links to `/` with `{ entered: true }` and lands already zoomed into Limbo, not back on the wide studio.
+
+## Limbo layout
+
+Music is the left portal, Software is the right. The title sits across a rotating particle orb. A pointer passing through it disturbs the particles. A pointer moving out to either portal collapses them into a tight orbit around the cursor. Do not move the portals to opposite corners.
