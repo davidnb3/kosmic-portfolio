@@ -26,20 +26,22 @@ export function ArrivalPage() {
     if (!scrollEl || !scene || !plate || !reveal || !hint) return;
 
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Zoomed into the glass is the top of the scroll. Exit and reduced motion land there.
     if (entered || reduce) {
-      const max = scrollEl.offsetHeight - window.innerHeight;
-      window.scrollTo(0, Math.max(0, max));
+      window.scrollTo(0, 0);
     }
 
     const apply = () => {
       const max = scrollEl.offsetHeight - window.innerHeight;
-      const raw = reduce ? 1 : max <= 0 ? 0 : Math.min(1, Math.max(0, window.scrollY / max));
-      const u = raw * raw * (3 - 2 * raw);
+      const raw = max <= 0 ? 0 : Math.min(1, Math.max(0, window.scrollY / max));
+      const travel = raw * raw * (3 - 2 * raw);
+      // u = 1 fills the glass; u = 0 shows the whole studio. Scrolling down eases u toward 0.
+      const u = reduce ? 1 : 1 - travel;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      const cover = Math.max(vw / IMAGE.w, vh / IMAGE.h);
-      const rw = IMAGE.w * cover;
-      const rh = IMAGE.h * cover;
+      const fit = Math.min(vw / IMAGE.w, vh / IMAGE.h);
+      const rw = IMAGE.w * fit;
+      const rh = IMAGE.h * fit;
       const ox = (vw - rw) / 2;
       const oy = (vh - rh) / 2;
       const gx = ox + SCREEN.x * rw;
@@ -92,7 +94,7 @@ export function ArrivalPage() {
       reveal.style.transform = `translate3d(${left}px, ${top}px, 0) scale(${scale})`;
       reveal.style.opacity = "1";
       reveal.style.pointerEvents = scale > 0.92 ? "auto" : "none";
-      hint.style.opacity = String(Math.max(0, 1 - u * 2.4));
+      hint.style.opacity = reduce ? "0" : String(Math.max(0, 1 - travel * 2.4));
     };
 
     apply();

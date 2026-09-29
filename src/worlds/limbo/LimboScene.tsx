@@ -57,6 +57,19 @@ function smoothstep(edge0: number, edge1: number, value: number) {
   return t * t * (3 - 2 * t);
 }
 
+/** Peak radial swell of one breath, one percent of the shell radius. */
+const HEART_SWELL = 0.01;
+/** How long the swell lasts inside each beat. The rest of the ~1s cycle is still. */
+const HEART_SPAN = 0.8;
+
+/** One breath: a soft rise, then a longer fall. Peak is 1. */
+function heartbeat(age: number) {
+  if (age <= 0 || age >= HEART_SPAN) return 0;
+  const t = age / HEART_SPAN;
+  const rise = 0.38;
+  return t < rise ? smoothstep(0, rise, t) : 1 - smoothstep(rise, 1, t);
+}
+
 function buildParticles() {
   const positions = new Float32Array(COUNT * 3);
   const colors = new Float32Array(COUNT * 3);
@@ -137,6 +150,7 @@ export function LimboScene({
   const spin = useRef(0);
   const shed = useRef(0);
   const shedWait = useRef(4 + Math.random());
+  const beat = useRef({ age: 0, wait: 0.92 + Math.random() * 0.16 });
   const field = useMemo(() => buildParticles(), []);
 
   useEffect(() => {
@@ -175,6 +189,16 @@ export function LimboScene({
     const orbX = px * follow;
     const orbY = py * follow;
     const body = RADIUS * (1 - singularity) + 0.2 * singularity;
+    let beatEnv = 0;
+    if (!reduce) {
+      beat.current.age += dt;
+      if (beat.current.age >= beat.current.wait) {
+        beat.current.age -= beat.current.wait;
+        beat.current.wait = 0.9 + Math.random() * 0.2;
+      }
+      beatEnv = heartbeat(beat.current.age);
+    }
+    const beatScale = 1 + beatEnv * (1 - singularity) * HEART_SWELL;
     const time = reduce ? 0 : performance.now() / 1000;
     const cos = Math.cos(spin.current);
     const sin = Math.sin(spin.current);
@@ -301,16 +325,22 @@ export function LimboScene({
       const looseX = hx + dx * inv * push;
       const looseY = hy + dy * inv * push;
       const looseZ = hz + influence * 0.22;
-      const targetX = orbX + looseX * (1 - singularity) + Math.cos(orbit) * orbitR * singularity;
-      const targetY = orbY + looseY * (1 - singularity) + Math.sin(orbit) * orbitR * singularity;
-      const targetZ = looseZ * (1 - singularity) + Math.sin(orbit * 2) * orbitR * 0.35 * singularity;
+      const shellX = looseX * (1 - singularity) + Math.cos(orbit) * orbitR * singularity;
+      const shellY = looseY * (1 - singularity) + Math.sin(orbit) * orbitR * singularity;
+      const shellZ = looseZ * (1 - singularity) + Math.sin(orbit * 2) * orbitR * 0.35 * singularity;
+      const targetX = orbX + shellX * beatScale;
+      const targetY = orbY + shellY * beatScale;
+      const targetZ = shellZ * beatScale;
       const lag = 1 - Math.exp(-dt * (3.1 + (i % 6) * 0.2));
       positions[o] += (targetX - positions[o]) * lag;
       positions[o + 1] += (targetY - positions[o + 1]) * lag;
       positions[o + 2] += (targetZ - positions[o + 2]) * lag;
 
       const rim = Math.pow(1 - Math.min(1, Math.abs(hz) / RADIUS), 0.6);
-      const shade = singularity > 0.2 ? 0.55 + singularity * 0.45 : 0.22 + rim * 0.78;
+      const shade = Math.min(
+        1,
+        (singularity > 0.2 ? 0.55 + singularity * 0.45 : 0.22 + rim * 0.78) + beatEnv * (1 - singularity) * 0.008,
+      );
       colors[o] = shade;
       colors[o + 1] = shade;
       colors[o + 2] = shade;

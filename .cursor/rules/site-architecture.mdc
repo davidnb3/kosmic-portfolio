@@ -19,11 +19,11 @@ Limbo is dark. The DAW stays light. The editor stays dark. There is no theme tog
 
 ## Arrival
 
-The first view is a still of a retro studio (`public/studio.png`) with a widescreen monitor. Scrolling zooms into the glass until it fills the browser. The zoom window matches the viewport’s aspect, so the bezel leaves on all four sides together.
+The top of the scroll is Limbo on the monitor glass, filling the browser. Scrolling down zooms out until the full retro studio (`public/studio.png`) is on screen, the entire picture fitted to the viewport. The zoom window matches the viewport’s aspect, so the bezel leaves on all four sides together.
 
 **The page on the monitor is the real `LimboPage`, not a picture of it.** It is laid out at viewport size and CSS-scaled into the measured glass (`SCREEN` in `ArrivalPage.tsx`). The same component the visitor enters is already on the glass, so the zoom must not crossfade a baked UI over a different layout. The Canvas uses `resize={{ offsetSize: true }}` so it measures layout size, not the transformed box.
 
-Exit world links to `/` with `{ entered: true }` and lands already zoomed into Limbo, not back on the wide studio.
+Exit world links to `/` with `{ entered: true }` and lands already zoomed into Limbo, at the top of the scroll, not on the wide studio.
 
 ## Limbo layout
 
@@ -31,4 +31,4 @@ Music is the left portal, Software is the right. The title sits across a rotatin
 
 Compression follows horizontal distance from the center. It starts once the pointer leaves the middle and eases down, reaching a tight orbit around the cursor only on a world button (Enter sound / Enter code). Vertical movement translates the orb and does not by itself collapse it. Do not hold the full sphere until the button, and do not finish the collapse beside the title.
 
-The shell sheds one or two particles every 4–5 seconds, chosen at random. The outward push is strongest beside the orb and fades with distance, then those particles drift. While the orb rests at the center the pull is off. Once it leaves the middle, a stray is pulled only when it is in a tight neighborhood around the orb. The pull is weak far away and stronger as the stray gets closer. It settles onto the shell at the surface where it arrived, instead of jumping to another point, and from then on uses the shell’s motion, including when the orb moves quickly. The last stretch of the approach eases off so a stray is not flung through the surface. Loose strays stay brighter than the shell so they read on the grid. Reduced motion freezes the spin, the follow, the shed, and the collapse.
+The shell beats about once a second: a very small, slow swell, with a slight variation between beats. The shell sheds one or two particles every 4–5 seconds, chosen at random. The outward push is strongest beside the orb and fades with distance, then those particles drift. While the orb rests at the center the pull is off. Once it leaves the middle, a stray is pulled only when it is in a tight neighborhood around the orb. The pull is weak far away and stronger as the stray gets closer. It settles onto the shell at the surface where it arrived, instead of jumping to another point, and from then on uses the shell’s motion, including when the orb moves quickly. The last stretch of the approach eases off so a stray is not flung through the surface. Loose strays stay brighter than the shell so they read on the grid. Reduced motion freezes the spin, the follow, the shed, the heartbeat, and the collapse.
