@@ -13,8 +13,9 @@ import {
 } from "three";
 
 export type LimboPointer = { x: number; y: number; active: boolean };
-/** `depart` starts the music flight. The scene eases the rest. */
-export type LimboStage = { depart: boolean };
+/** Which world flight is playing. The scene eases the rest. */
+export type LimboWorld = "idle" | "music" | "software";
+export type LimboStage = { world: LimboWorld };
 
 const COUNT = 5600;
 const LOST_AT_START = 260;
@@ -259,6 +260,7 @@ export function LimboScene({
   const shedWait = useRef(4 + Math.random());
   const beat = useRef({ age: 0, wait: 0.92 + Math.random() * 0.16 });
   const flight = useRef(0);
+  const flightKind = useRef<Exclude<LimboWorld, "idle">>("music");
   const waveGroup = useRef(0);
   const crests = useRef<number[]>([]);
   const thump = useRef({ age: 0, wait: 3.6, prev: 0 });
@@ -298,8 +300,10 @@ export function LimboScene({
     const singularity = pointer.active && !reduce ? smoothstep(0.16, 0.88, Math.abs(aim.x)) : 0;
     let orbX = px * follow;
     let orbY = py * follow;
-    const depart = Boolean(stageRef.current?.depart);
-    const goal = depart ? FLIGHT : 0;
+    const world = stageRef.current?.world ?? "idle";
+    if (world === "music" || world === "software") flightKind.current = world;
+    const kind = flightKind.current;
+    const goal = world === "idle" ? 0 : FLIGHT;
     if (reduce) flight.current = goal;
     else {
       flight.current += (goal - flight.current) * (1 - Math.exp(-dt * 1.55));
@@ -313,10 +317,10 @@ export function LimboScene({
     // Open the collapsed ring back into a sphere, carry that sphere to the corner, then ease homes into the woofer.
     const open = smoothstep(0, FLIGHT * 0.24, flight.current);
     const carry = smoothstep(0, FLIGHT * 0.58, flight.current);
-    const form = smoothstep(FLIGHT * 0.62, FLIGHT, flight.current);
-    const flightYaw = smoothstep(0, FLIGHT * 0.52, flight.current) * 1.15;
+    const form = kind === "music" ? smoothstep(FLIGHT * 0.62, FLIGHT, flight.current) : 0;
+    const flightYaw = smoothstep(0, FLIGHT * 0.52, flight.current) * 1.15 * (kind === "software" ? -1 : 1);
     if (carry > 0) {
-      const landX = -halfW * 0.62;
+      const landX = (kind === "software" ? 1 : -1) * halfW * 0.62;
       const landY = halfH * 0.56;
       orbX = orbX + (landX - orbX) * carry;
       orbY = orbY + (landY - orbY) * carry;
@@ -339,7 +343,7 @@ export function LimboScene({
     const sin = Math.sin(angle);
     let conePush = 0;
     let launchGroup = 0;
-    if (form > 0.72 && !reduce) {
+    if (kind === "music" && form > 0.72 && !reduce) {
       thump.current.age += dt;
       const span = 0.95;
       const t = thump.current.age / span;
@@ -397,10 +401,13 @@ export function LimboScene({
       const sx = home[o] * cos + home[o + 2] * sin;
       const sy = home[o + 1];
       const sz = -home[o] * sin + home[o + 2] * cos;
-      let hx = sx * (1 - form) + speakerHome[o] * form;
-      let hy = sy * (1 - form) + speakerHome[o + 1] * form;
-      let hz = sz * (1 - form) + speakerHome[o + 2] * form;
-      if (form > 0.4 && speakerKind[i] !== FRAME && speakerKind[i] !== SCREW) {
+      const tx = speakerHome[o];
+      const ty = speakerHome[o + 1];
+      const tz = speakerHome[o + 2];
+      let hx = sx * (1 - form) + tx * form;
+      let hy = sy * (1 - form) + ty * form;
+      let hz = sz * (1 - form) + tz * form;
+      if (kind === "music" && form > 0.4 && speakerKind[i] !== FRAME && speakerKind[i] !== SCREW) {
         const amp = speakerKind[i] === CAP ? 0.22 : speakerKind[i] === CONE ? 0.16 : 0.05;
         hx += CONE_BASIS.fx * conePush * amp * form;
         hy += CONE_BASIS.fy * conePush * amp * form;
@@ -514,7 +521,7 @@ export function LimboScene({
           velocity[o] += Math.sin(time * 0.65 + phase[i]) * dt * 0.03;
           velocity[o + 1] += Math.cos(time * 0.5 + phase[i]) * dt * 0.025;
         }
-        if (form > 0.6) {
+        if (kind === "music" && form > 0.6) {
           const b = CONE_BASIS;
           const mouth = 0.02 * SPEAKER_SCALE;
           const mouthX = orbX + b.fx * mouth;
@@ -540,14 +547,14 @@ export function LimboScene({
             velocity[o + 2] += (b.fz * 0.84 + sideZ * side) * push * dt;
           }
         }
-        const drag = 1 - dt * (form > 0.5 ? 0.1 : 0.04);
+        const drag = 1 - dt * (kind === "music" && form > 0.5 ? 0.1 : 0.04);
         velocity[o] *= drag;
         velocity[o + 1] *= drag;
         velocity[o + 2] *= drag;
         positions[o] += velocity[o] * dt;
         positions[o + 1] += velocity[o + 1] * dt;
         positions[o + 2] += velocity[o + 2] * dt;
-        if (form < 0.35) {
+        if (kind !== "music" || form < 0.35) {
           if (Math.abs(positions[o]) > halfW * 0.96) velocity[o] *= -0.8;
           if (Math.abs(positions[o + 1]) > halfH * 0.96) velocity[o + 1] *= -0.8;
         }

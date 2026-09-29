@@ -17,7 +17,7 @@ export function LimboPage() {
   const chromeRef = useRef<HTMLDivElement>(null);
   const blendRef = useRef(0.5);
   const pointerRef = useRef<LimboPointer>({ x: 0, y: 0, active: false });
-  const stageRef = useRef<LimboStage>({ depart: false });
+  const stageRef = useRef<LimboStage>({ world: "idle" });
 
   const slideChrome = (xPercent: number) => {
     const chrome = chromeRef.current;
@@ -29,14 +29,20 @@ export function LimboPage() {
   };
 
   const enterMusic = () => {
-    if (stageRef.current.depart) return;
-    stageRef.current.depart = true;
+    if (stageRef.current.world !== "idle") return;
+    stageRef.current.world = "music";
     slideChrome(110);
   };
 
-  const exitMusic = () => {
-    if (!stageRef.current.depart) return;
-    stageRef.current.depart = false;
+  const enterSoftware = () => {
+    if (stageRef.current.world !== "idle") return;
+    stageRef.current.world = "software";
+    slideChrome(-110);
+  };
+
+  const exitWorld = () => {
+    if (stageRef.current.world === "idle") return;
+    stageRef.current.world = "idle";
     slideChrome(0);
   };
 
@@ -78,6 +84,7 @@ export function LimboPage() {
     if (!root) return;
     let acc = 0;
     let idle = 0;
+    let settling = false;
     const onWheel = (event: WheelEvent) => {
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
       const dx = event.deltaX * unit;
@@ -87,21 +94,36 @@ export function LimboPage() {
       event.preventDefault();
       const reveal = root.parentElement;
       if (reveal && getComputedStyle(reveal).pointerEvents === "none") return;
-      acc += dx;
       window.clearTimeout(idle);
       idle = window.setTimeout(() => {
         acc = 0;
+        settling = false;
       }, 240);
-      if (stageRef.current.depart) {
+      if (settling) return;
+      acc += dx;
+      const world = stageRef.current.world;
+      if (world === "music") {
         if (acc > 90) {
           acc = 0;
-          exitMusic();
+          settling = true;
+          exitWorld();
+        }
+        return;
+      }
+      if (world === "software") {
+        if (acc < -90) {
+          acc = 0;
+          settling = true;
+          exitWorld();
         }
         return;
       }
       if (acc < -90) {
         acc = 0;
         enterMusic();
+      } else if (acc > 90) {
+        acc = 0;
+        enterSoftware();
       }
     };
     window.addEventListener("wheel", onWheel, { passive: false });
@@ -217,7 +239,7 @@ export function LimboPage() {
             lede={site.softwareLede}
             action="Enter code"
             align="right"
-            onEnter={() => {}}
+            onEnter={enterSoftware}
           />
           <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 text-center">
             <p className="limbo-fade text-[10px] uppercase tracking-[0.42em] text-white/50">{site.limboKicker}</p>
