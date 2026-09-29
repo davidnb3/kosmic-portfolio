@@ -1,0 +1,33 @@
+---
+description: Orb architecture — particle cloud, scroll, morphs, and world entries
+alwaysApply: true
+---
+
+# Orb architecture
+
+The Limbo orb is one WebGL point cloud in `LimboScene.tsx` (a `Points` object, about 5,600 particles). Each particle has a `home` on a procedural sphere. They are one group, so moving the group moves every particle. This is the same idea as the Dala brain (particle cloud whose homes came from a shape), not an SVG and not a solid mesh.
+
+Current behavior — pointer follow, singularity on a world button, heartbeat, shed, stray pull — is specified in `site-architecture.mdc`. Keep it. The loop that implements it runs on the CPU inside `useFrame`. `SHELL` and `LOST` are per-particle state: a stray stores a velocity and an escape timer, and landing rewrites `home` to the arrival point.
+
+## Do this next
+
+Scroll, a turn, and a flight move the **group**, not the particles one by one. Write the target into a ref and apply it in the existing `useFrame`, the way the pointer already moves the group. Driving `position` or `rotation` from React state on scroll re-renders the scene every frame and will stutter.
+
+An explosion or a sound wave is an offset away from `home`, then the spring back. The shed stray is the small version of this. Add that offset in the current loop.
+
+A morph (sphere to speaker, sphere to energy cloud, brain to bulb to planet) is a second home list of the **same count**. Ease each `home` toward the new list. The shell already chases `home`, so the shape change is smooth. Position, shape, and sprite ease over the same stretch of time. No hard cut.
+
+## World entries
+
+Clicking Enter sound or Enter code must not navigate immediately. The route change unmounts the canvas, so a flight would never play. The singularity already gathered on the cursor is the departure. Fly that cluster to where the world opens, and blend `home` into the destination shape along the way. Change route when the flight finishes.
+
+- **Music.** Homes become a speaker. The heartbeat is the thump. Shed particles leave the cone as sound waves.
+- **Software.** Homes become an energy cloud. The dot sprite can become a spark, and particles can travel along curves. A continuous electricity line is a second object, faded in while the dots thin, then faded out if the cloud returns. Do not expect `Points` to become a line by changing the texture.
+
+## What not to refactor
+
+A `.gltf` mesh only supplies a new list of homes. It does not explode, scroll, or morph. Keep the procedural sphere until a shape actually needs authored points.
+
+A vertex shader is a later upgrade for a denser look (instanced triangles, cursor glow, curl noise), and only after a measured frame drop. It is not required for scroll or morph. Stateless effects — swell, cursor push, explosion offset — are formulas of home and time and can move to the GPU. The stray lifecycle cannot: it remembers velocity, a timer, and a rewritten home. That needs a simulation buffer, not a one-pass shader. Leave it in JavaScript.
+
+Reduced motion freezes the spin, the follow, the shed, the heartbeat, the collapse, and any flight or morph.
