@@ -1,10 +1,9 @@
 import { Canvas } from "@react-three/fiber";
 import gsap from "gsap";
 import { useLayoutEffect, useRef, type PointerEvent } from "react";
-import { useNavigate } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
 import { site } from "../../config/site";
-import { LimboScene, type LimboPointer } from "./LimboScene";
+import { LimboScene, type LimboPointer, type LimboStage } from "./LimboScene";
 
 const codeBits = [
   { label: "01011  FUNCTION", top: "16%", right: "3%" },
@@ -14,10 +13,32 @@ const codeBits = [
 ];
 
 export function LimboPage() {
-  const navigate = useNavigate();
   const rootRef = useRef<HTMLElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
   const blendRef = useRef(0.5);
   const pointerRef = useRef<LimboPointer>({ x: 0, y: 0, active: false });
+  const stageRef = useRef<LimboStage>({ depart: false });
+
+  const slideChrome = (xPercent: number) => {
+    const chrome = chromeRef.current;
+    if (!chrome) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    gsap.killTweensOf(chrome);
+    if (reduce) gsap.set(chrome, { xPercent });
+    else gsap.to(chrome, { xPercent, duration: 1.35, ease: "power3.inOut" });
+  };
+
+  const enterMusic = () => {
+    if (stageRef.current.depart) return;
+    stageRef.current.depart = true;
+    slideChrome(110);
+  };
+
+  const exitMusic = () => {
+    if (!stageRef.current.depart) return;
+    stageRef.current.depart = false;
+    slideChrome(0);
+  };
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -49,6 +70,44 @@ export function LimboPage() {
     return () => {
       cancelAnimationFrame(frame);
       context.revert();
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    let acc = 0;
+    let idle = 0;
+    const onWheel = (event: WheelEvent) => {
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+      const dx = event.deltaX * unit;
+      const dy = event.deltaY * unit;
+      if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy)) return;
+      // A sideways trackpad swipe is also the browser's back/forward gesture.
+      event.preventDefault();
+      const reveal = root.parentElement;
+      if (reveal && getComputedStyle(reveal).pointerEvents === "none") return;
+      acc += dx;
+      window.clearTimeout(idle);
+      idle = window.setTimeout(() => {
+        acc = 0;
+      }, 240);
+      if (stageRef.current.depart) {
+        if (acc > 90) {
+          acc = 0;
+          exitMusic();
+        }
+        return;
+      }
+      if (acc < -90) {
+        acc = 0;
+        enterMusic();
+      }
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      window.clearTimeout(idle);
+      window.removeEventListener("wheel", onWheel);
     };
   }, []);
 
@@ -122,11 +181,11 @@ export function LimboPage() {
           dpr={[1, 1.6]}
           gl={{ alpha: true, antialias: true }}
         >
-          <LimboScene blendRef={blendRef} pointerRef={pointerRef} />
+          <LimboScene blendRef={blendRef} pointerRef={pointerRef} stageRef={stageRef} />
         </Canvas>
       </div>
 
-      <div className="relative z-10 flex h-full flex-col">
+      <div ref={chromeRef} className="relative z-10 flex h-full flex-col">
         <header className="limbo-fade flex items-center justify-between px-6 py-4 sm:px-8">
           <BrandMark />
           <p className="hidden text-center text-[10px] leading-4 tracking-[0.16em] text-white/55 sm:block">
@@ -148,7 +207,7 @@ export function LimboPage() {
             lede={site.musicLede}
             action="Enter sound"
             align="left"
-            onEnter={() => navigate("/music")}
+            onEnter={enterMusic}
           />
           <div className="limbo-fade pointer-events-none" />
           <Portal
@@ -158,7 +217,7 @@ export function LimboPage() {
             lede={site.softwareLede}
             action="Enter code"
             align="right"
-            onEnter={() => navigate("/software")}
+            onEnter={() => {}}
           />
           <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 text-center">
             <p className="limbo-fade text-[10px] uppercase tracking-[0.42em] text-white/50">{site.limboKicker}</p>

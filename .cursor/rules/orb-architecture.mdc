@@ -19,10 +19,9 @@ A morph (sphere to speaker, sphere to energy cloud, brain to bulb to planet) is 
 
 ## World entries
 
-Clicking Enter sound or Enter code must not navigate immediately. The route change unmounts the canvas, so a flight would never play. The singularity already gathered on the cursor is the departure. Fly that cluster to where the world opens, and blend `home` into the destination shape along the way. Change route when the flight finishes.
+The music and software buttons do not open `/music` or `/software`. Those pages stay in the repo.
 
-- **Music.** Homes become a speaker. The heartbeat is the thump. Shed particles leave the cone as sound waves.
-- **Software.** Homes become an energy cloud. The dot sprite can become a spark, and particles can travel along curves. A continuous electricity line is a second object, faded in while the dots thin, then faded out if the cloud returns. Do not expect `Points` to become a line by changing the texture.
+Enter sound plays on the Limbo page, from the button or from a horizontal scroll toward the left. Scrolling back toward the right reverses that flight: the chrome returns and the speaker eases into the orb again. That horizontal wheel is cancelled so the browser does not treat it as back/forward and open `/music`. Vertical scrolling stays on the studio zoom in `ArrivalPage` and does not open a world. The limbo chrome slides off to the right. The background stays. The singularity leaves the cursor and settles at a fixed point on the left, and it does not follow the pointer after that. On the way, homes blend from the sphere into a speaker whose cone faces right. Once it has landed, each beat pushes a wave of particles out of the cone toward the right side of the screen, where the music UI will go. A horizontal scroll toward the right is the software direction. Enter code does not navigate and has no flight yet.
 
 ## What not to refactor
 

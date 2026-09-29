@@ -19,7 +19,7 @@ Limbo is dark. The DAW stays light. The editor stays dark. There is no theme tog
 
 ## Arrival
 
-The top of the scroll is Limbo on the monitor glass, filling the browser. Scrolling down zooms out until the full retro studio (`public/studio.png`) is on screen, the entire picture fitted to the viewport. The zoom window matches the viewport’s aspect, so the bezel leaves on all four sides together.
+The top of the scroll is Limbo on the monitor glass, filling the browser. Scrolling down zooms out until the full retro studio (`public/studio.png`) is on screen, the entire picture fitted to the viewport. Scrolling up zooms back into the glass. Horizontal scrolling does not change this zoom. The zoom window matches the viewport’s aspect, so the bezel leaves on all four sides together.
 
 **The page on the monitor is the real `LimboPage`, not a picture of it.** It is laid out at viewport size and CSS-scaled into the measured glass (`SCREEN` in `ArrivalPage.tsx`). The same component the visitor enters is already on the glass, so the zoom must not crossfade a baked UI over a different layout. The Canvas uses `resize={{ offsetSize: true }}` so it measures layout size, not the transformed box.
 

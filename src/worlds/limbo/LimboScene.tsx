@@ -13,6 +13,8 @@ import {
 } from "three";
 
 export type LimboPointer = { x: number; y: number; active: boolean };
+/** `depart` starts the music flight. The scene eases the rest. */
+export type LimboStage = { depart: boolean };
 
 const COUNT = 5600;
 const LOST_AT_START = 260;
@@ -68,6 +70,75 @@ function heartbeat(age: number) {
   const t = age / HEART_SPAN;
   const rise = 0.38;
   return t < rise ? smoothstep(0, rise, t) : 1 - smoothstep(rise, 1, t);
+}
+
+const CABINET = 0;
+const WOOFER = 1;
+const TWEETER = 2;
+
+/** Speaker homes in the cloud's local space. The cone faces +X, toward screen right. */
+function buildSpeaker() {
+  const home = new Float32Array(COUNT * 3);
+  const kind = new Uint8Array(COUNT);
+  const wave = new Uint8Array(COUNT);
+  const x0 = -0.46;
+  const x1 = 0.58;
+  const y1 = 1.34;
+  const z1 = 0.8;
+  for (let i = 0; i < COUNT; i += 1) {
+    const o = i * 3;
+    const slot = i % 10;
+    if (slot <= 6) {
+      kind[i] = CABINET;
+      const face = i % 6;
+      const a = hash(i) * 2 - 1;
+      const b = hash(i + 19) * 2 - 1;
+      const along = (a + 1) * 0.5 * (x1 - x0) + x0;
+      if (face === 0) {
+        home[o] = x1;
+        home[o + 1] = a * y1;
+        home[o + 2] = b * z1;
+      } else if (face === 1) {
+        home[o] = x0;
+        home[o + 1] = a * y1;
+        home[o + 2] = b * z1;
+      } else if (face === 2) {
+        home[o] = along;
+        home[o + 1] = y1;
+        home[o + 2] = b * z1;
+      } else if (face === 3) {
+        home[o] = along;
+        home[o + 1] = -y1;
+        home[o + 2] = b * z1;
+      } else if (face === 4) {
+        home[o] = along;
+        home[o + 1] = b * y1;
+        home[o + 2] = z1;
+      } else {
+        home[o] = along;
+        home[o + 1] = b * y1;
+        home[o + 2] = -z1;
+      }
+    } else if (slot <= 8) {
+      kind[i] = WOOFER;
+      const ang = GOLDEN * i;
+      const rad = Math.sqrt(hash(i + 5)) * 0.8;
+      const bulge = Math.cos((rad / 0.8) * Math.PI * 0.5) * 0.32;
+      home[o] = x1 + bulge;
+      home[o + 1] = -0.16 + Math.sin(ang) * rad;
+      home[o + 2] = Math.cos(ang) * rad;
+      if (hash(i + 4) > 0.62) wave[i] = 1;
+    } else {
+      kind[i] = TWEETER;
+      const ang = GOLDEN * i;
+      const rad = Math.sqrt(hash(i + 8)) * 0.26;
+      const bulge = Math.cos((rad / 0.26) * Math.PI * 0.5) * 0.12;
+      home[o] = x1 + bulge;
+      home[o + 1] = 0.82 + Math.sin(ang) * rad;
+      home[o + 2] = Math.cos(ang) * rad;
+    }
+  }
+  return { home, kind, wave };
 }
 
 function buildParticles() {
@@ -135,14 +206,33 @@ function buildParticles() {
   });
   const points = new Points(geometry, material);
   points.frustumCulled = false;
-  return { points, geometry, material, home, phase, positions, colors, velocity, mode, escape };
+  const speaker = buildSpeaker();
+  return {
+    points,
+    geometry,
+    material,
+    home,
+    phase,
+    positions,
+    colors,
+    velocity,
+    mode,
+    escape,
+    speakerHome: speaker.home,
+    speakerKind: speaker.kind,
+    speakerWave: speaker.wave,
+  };
 }
+
+const FLIGHT = 1.35;
 
 export function LimboScene({
   pointerRef,
+  stageRef,
 }: {
   blendRef: RefObject<number>;
   pointerRef: RefObject<LimboPointer>;
+  stageRef: RefObject<LimboStage>;
 }) {
   const groupRef = useRef<Group>(null);
   const reduceRef = useRef<boolean | null>(null);
@@ -151,6 +241,9 @@ export function LimboScene({
   const shed = useRef(0);
   const shedWait = useRef(4 + Math.random());
   const beat = useRef({ age: 0, wait: 0.92 + Math.random() * 0.16 });
+  const flight = useRef(0);
+  const waveT = useRef(-1);
+  const waveFired = useRef(false);
   const field = useMemo(() => buildParticles(), []);
 
   useEffect(() => {
@@ -186,9 +279,24 @@ export function LimboScene({
     const travel = pointer.active && !reduce ? Math.hypot(aim.x, aim.y) : 0;
     const follow = pointer.active && !reduce ? smoothstep(0.08, 0.28, travel) : 0;
     const singularity = pointer.active && !reduce ? smoothstep(0.16, 0.88, Math.abs(aim.x)) : 0;
-    const orbX = px * follow;
-    const orbY = py * follow;
-    const body = RADIUS * (1 - singularity) + 0.2 * singularity;
+    let orbX = px * follow;
+    let orbY = py * follow;
+    const depart = Boolean(stageRef.current?.depart);
+    const goal = depart ? FLIGHT : 0;
+    if (reduce) flight.current = goal;
+    else {
+      flight.current += (goal - flight.current) * (1 - Math.exp(-dt * 2.4));
+      if (Math.abs(goal - flight.current) < 0.01) flight.current = goal;
+    }
+    const morph = smoothstep(0, FLIGHT, flight.current);
+    if (morph > 0) {
+      const landX = -halfW * 0.5;
+      const landY = 0;
+      orbX = orbX + (landX - orbX) * morph;
+      orbY = orbY + (landY - orbY) * morph;
+    }
+    const shape = singularity * (1 - morph);
+    const body = RADIUS * (1 - shape) + 0.2 * shape;
     let beatEnv = 0;
     if (!reduce) {
       beat.current.age += dt;
@@ -198,12 +306,19 @@ export function LimboScene({
       }
       beatEnv = heartbeat(beat.current.age);
     }
-    const beatScale = 1 + beatEnv * (1 - singularity) * HEART_SWELL;
+    const beatScale = 1 + beatEnv * (1 - shape) * HEART_SWELL;
     const time = reduce ? 0 : performance.now() / 1000;
-    const cos = Math.cos(spin.current);
-    const sin = Math.sin(spin.current);
+    const spinShown = spin.current * (1 - morph);
+    const cos = Math.cos(spinShown);
+    const sin = Math.sin(spinShown);
+    if (morph > 0.82 && beatEnv > 0.7 && !waveFired.current) {
+      waveFired.current = true;
+      waveT.current = 0;
+    }
+    if (beatEnv < 0.28) waveFired.current = false;
+    if (waveT.current >= 0 && waveT.current < 2.1) waveT.current += dt;
 
-    if (!reduce) {
+    if (!reduce && morph === 0) {
       shed.current += dt;
       if (shed.current > shedWait.current) {
         shed.current = 0;
@@ -232,12 +347,18 @@ export function LimboScene({
       }
     }
 
-    const { positions, colors, home, phase, velocity, mode, escape } = field;
+    const { positions, colors, home, phase, velocity, mode, escape, speakerHome, speakerKind, speakerWave } = field;
     for (let i = 0; i < COUNT; i += 1) {
       const o = i * 3;
-      const hx = home[o] * cos + home[o + 2] * sin;
-      const hy = home[o + 1];
-      const hz = -home[o] * sin + home[o + 2] * cos;
+      let sx = home[o] * (1 - morph) + speakerHome[o] * morph;
+      const sy = home[o + 1] * (1 - morph) + speakerHome[o + 1] * morph;
+      const sz = home[o + 2] * (1 - morph) + speakerHome[o + 2] * morph;
+      if (speakerKind[i] !== CABINET && morph > 0.35) {
+        sx += beatEnv * (speakerKind[i] === WOOFER ? 0.3 : 0.12) * morph;
+      }
+      const hx = sx * cos + sz * sin;
+      const hy = sy;
+      const hz = -sx * sin + sz * cos;
       const orbit = phase[i] + time * (2.6 + (i % 5) * 0.18);
       const orbitR = 0.05 + (i % 13) * 0.011;
 
@@ -257,7 +378,7 @@ export function LimboScene({
             velocity[o + 1] -= (toY / r) * push * dt;
             velocity[o + 2] -= (toZ / r) * push * dt;
           }
-        } else if (follow > 0 && gap < STRAY_REACH) {
+        } else if (follow > 0 && morph === 0 && gap < STRAY_REACH) {
           const dir = Math.max(radial, 1e-4);
           const nx = toX / dir;
           const ny = toY / dir;
@@ -319,15 +440,15 @@ export function LimboScene({
       const dy = hy - py;
       const dist = Math.hypot(dx, dy);
       const front = smoothstep(-0.15, 0.55, hz / RADIUS);
-      const influence = pointer.active ? smoothstep(0.78, 0.02, dist) * front * (1 - follow) * (1 - singularity) : 0;
+      const influence = pointer.active && morph === 0 ? smoothstep(0.78, 0.02, dist) * front * (1 - follow) * (1 - shape) : 0;
       const push = influence * 0.62;
       const inv = dist > 0.0008 ? 1 / dist : 0;
       const looseX = hx + dx * inv * push;
       const looseY = hy + dy * inv * push;
       const looseZ = hz + influence * 0.22;
-      const shellX = looseX * (1 - singularity) + Math.cos(orbit) * orbitR * singularity;
-      const shellY = looseY * (1 - singularity) + Math.sin(orbit) * orbitR * singularity;
-      const shellZ = looseZ * (1 - singularity) + Math.sin(orbit * 2) * orbitR * 0.35 * singularity;
+      const shellX = looseX * (1 - shape) + Math.cos(orbit) * orbitR * shape;
+      const shellY = looseY * (1 - shape) + Math.sin(orbit) * orbitR * shape;
+      const shellZ = looseZ * (1 - shape) + Math.sin(orbit * 2) * orbitR * 0.35 * shape;
       const targetX = orbX + shellX * beatScale;
       const targetY = orbY + shellY * beatScale;
       const targetZ = shellZ * beatScale;
@@ -336,11 +457,24 @@ export function LimboScene({
       positions[o + 1] += (targetY - positions[o + 1]) * lag;
       positions[o + 2] += (targetZ - positions[o + 2]) * lag;
 
+      const along = speakerWave[i] && morph > 0.75 && waveT.current >= 0 ? Math.max(0, waveT.current - hash(i) * 0.05) : 0;
+      if (along > 0.03) {
+        const spread = 1 + along * 0.28;
+        const cy = -0.16;
+        const py = speakerHome[o + 1];
+        const pz = speakerHome[o + 2];
+        positions[o] = orbX + speakerHome[o] + beatEnv * 0.3 + along * 2.45;
+        positions[o + 1] = orbY + cy + (py - cy) * spread;
+        positions[o + 2] = pz * spread;
+        const fade = Math.max(0.35, 1 - along / 2);
+        colors[o] = fade;
+        colors[o + 1] = fade;
+        colors[o + 2] = fade;
+        continue;
+      }
+
       const rim = Math.pow(1 - Math.min(1, Math.abs(hz) / RADIUS), 0.6);
-      const shade = Math.min(
-        1,
-        (singularity > 0.2 ? 0.55 + singularity * 0.45 : 0.22 + rim * 0.78) + beatEnv * (1 - singularity) * 0.008,
-      );
+      const shade = Math.min(1, (shape > 0.2 ? 0.55 + shape * 0.45 : 0.22 + rim * 0.78) + beatEnv * (1 - shape) * 0.008);
       colors[o] = shade;
       colors[o + 1] = shade;
       colors[o + 2] = shade;
