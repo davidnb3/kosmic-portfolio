@@ -117,7 +117,7 @@ export function ArrivalPage() {
       <div className="sticky top-0 h-dvh overflow-hidden bg-black">
         <div ref={sceneRef} className="absolute inset-0 will-change-transform">
           <div ref={plateRef} className="absolute">
-            <img src="/studio.png" alt="A dark retro studio, Limbo glowing on the computer" className="h-full w-full select-none" draggable={false} />
+            <img src={`${import.meta.env.BASE_URL}studio.png`} alt="A dark retro studio, Limbo glowing on the computer" className="h-full w-full select-none" draggable={false} />
             <div className="studio-window pointer-events-none absolute left-0 top-[6%] h-[58%] w-[20%] bg-[radial-gradient(circle_at_30%_40%,rgba(255,228,180,0.55),transparent_70%)] mix-blend-screen" />
             <div className="studio-beam pointer-events-none absolute left-0 top-0 h-[40%] w-full mix-blend-screen blur-[10px] [mask-image:linear-gradient(90deg,#000_0%,#000_32%,transparent_80%)]">
               <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_0%,rgba(255,244,214,0.08)_18%,rgba(255,236,196,0.72)_48%,rgba(255,196,120,0.2)_68%,transparent_100%)]" />
