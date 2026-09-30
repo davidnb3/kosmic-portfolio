@@ -6,7 +6,7 @@ import {
   CanvasTexture,
   Euler,
   Points,
-  PointsMaterial,
+  ShaderMaterial,
   Vector3,
   type Group,
   type PerspectiveCamera,
@@ -54,6 +54,176 @@ function dotTexture() {
   const texture = new CanvasTexture(canvas);
   texture.needsUpdate = true;
   return texture;
+}
+
+/** Point size in world units. Matches the old PointsMaterial. */
+const POINT_SIZE = 0.034;
+/** How far an arc filament reaches out of the shell, as a fraction of the radius. */
+const ARC_REACH = 0.55;
+
+/**
+ * The material is three's PointsMaterial rewritten as a ShaderMaterial so the software world
+ * can add the electric arcs on the GPU. At uElectric = 0 the vertex and fragment output are the
+ * same as PointsMaterial with a map, size attenuation, and vertex colors: nothing changes on
+ * Limbo or in the music flight. The arcs are a stateless offset of position and time. They do
+ * not touch the CPU loop, the homes, or the stray lifecycle.
+ */
+const electricVertex = /* glsl */ `
+  uniform float size;
+  uniform float scale;
+  uniform float uTime;
+  uniform float uElectric;
+  uniform vec3 uCenter;
+  uniform float uRadius;
+
+  varying vec3 vColor;
+  varying float vArc;
+  varying float vLive;
+
+  vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+  vec4 permute(vec4 x) { return mod289(((x * 34.0) + 1.0) * x); }
+  vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+  float snoise(vec3 v) {
+    const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = mod289(i);
+    vec4 p = permute(permute(permute(
+      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+      + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+      + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0) * 2.0 + 1.0;
+    vec4 s1 = floor(b1) * 2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+    m = m * m;
+    return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+  }
+
+  void main() {
+    vColor = color;
+    vec3 pos = position;
+    float arc = 0.0;
+    float flicker = 0.0;
+    float live = 0.0;
+
+    if (uElectric > 0.001) {
+      // Only the shell arcs. Strays and wave particles further out are left alone.
+      vec3 rel = pos - uCenter;
+      float dist = length(rel);
+      vec3 norm = dist > 1e-4 ? rel / dist : vec3(0.0, 0.0, 1.0);
+      float onShell = 1.0 - smoothstep(uRadius * 1.15, uRadius * 1.7, dist);
+      live = uElectric * onShell;
+
+      // Per-particle phase from the vertex index. Golden-ratio spacing keeps neighbours apart.
+      float phase = fract(float(gl_VertexID) * 0.618034) * 6.2831853;
+      vec3 field = rel * (3.5 / uRadius);
+
+      // Filaments are the zero crossings of a crawling noise field: thin curves on the shell,
+      // so neighbouring particles lift together and read as one arc instead of speckle.
+      float crawl = snoise(field + vec3(0.0, uTime * 0.9, uTime * 0.35));
+      float filament = smoothstep(0.8, 0.95, 1.0 - abs(crawl));
+      // A slower, wider field decides where arcs are live right now, so they wander and die out.
+      float region = snoise(field * 0.8 + vec3(uTime * 1.6, 0.0, 3.0));
+      float strength = smoothstep(-0.1, 0.5, region);
+      float pump = 0.6 + 0.4 * sin(uTime * 6.0 + region * 8.0);
+      arc = filament * strength * pump;
+
+      flicker = sin(uTime * 25.0 + phase * 10.0);
+      // Jagged silhouette along the arc, and a fast sideways crackle.
+      float reach = ${ARC_REACH.toFixed(3)} * (0.55 + 0.45 * snoise(field * 2.2 + vec3(uTime * 3.0)));
+      vec3 jitter = vec3(
+        snoise(field + vec3(uTime * 8.0)),
+        snoise(field + vec3(uTime * 8.0 + 10.0)),
+        snoise(field + vec3(uTime * 8.0 + 20.0))
+      ) * 0.07 * flicker;
+      // The whole live shell hums a little, so the body reads as charged, not just the arcs.
+      float hum = 0.012 * sin(uTime * 30.0 + phase * 7.0);
+      pos += (norm * (reach * arc + hum) + jitter * arc) * live;
+      arc *= live;
+    }
+
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    // PointsMaterial: size * (scale / -z). Arcs get a flickering size boost on top.
+    gl_PointSize = size * (scale / -mvPosition.z) * (1.0 + arc * (0.7 + 0.8 * abs(flicker)));
+
+    vArc = arc * (0.7 + 0.3 * abs(flicker));
+    vLive = live;
+  }
+`;
+
+const electricFragment = /* glsl */ `
+  uniform sampler2D map;
+
+  varying vec3 vColor;
+  varying float vArc;
+  varying float vLive;
+
+  void main() {
+    vec2 uv = vec2(gl_PointCoord.x, 1.0 - gl_PointCoord.y);
+    vec4 tex = texture2D(map, uv);
+
+    // Electric palette: blue body, cyan filaments, pink on the hottest arcs.
+    vec3 bodyBlue = vec3(0.32, 0.56, 1.0);
+    vec3 electricCyan = vec3(0.1, 0.85, 1.0);
+    vec3 arcPink = vec3(0.85, 0.2, 0.95);
+    float heat = clamp(vArc * 1.5, 0.0, 1.0);
+    float bloom = 1.0 + vArc * 2.5;
+    vec3 electric = mix(bodyBlue * vColor.r, electricCyan * bloom, heat);
+    electric = mix(electric, arcPink * bloom, smoothstep(0.6, 0.9, vArc) * 0.6);
+
+    vec3 col = mix(vColor, electric, vLive);
+    gl_FragColor = vec4(col * tex.rgb, tex.a);
+    #include <colorspace_fragment>
+  }
+`;
+
+function orbMaterial(map: CanvasTexture) {
+  return new ShaderMaterial({
+    vertexShader: electricVertex,
+    fragmentShader: electricFragment,
+    uniforms: {
+      map: { value: map },
+      size: { value: POINT_SIZE },
+      scale: { value: 1 },
+      uTime: { value: 0 },
+      uElectric: { value: 0 },
+      uCenter: { value: new Vector3() },
+      uRadius: { value: RADIUS },
+    },
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+  });
 }
 
 function smoothstep(edge0: number, edge1: number, value: number) {
@@ -212,15 +382,8 @@ function buildParticles() {
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new BufferAttribute(positions, 3));
   geometry.setAttribute("color", new BufferAttribute(colors, 3));
-  const material = new PointsMaterial({
-    map: dotTexture(),
-    size: 0.034,
-    vertexColors: true,
-    transparent: true,
-    depthWrite: false,
-    toneMapped: false,
-    sizeAttenuation: true,
-  });
+  const map = dotTexture();
+  const material = orbMaterial(map);
   const points = new Points(geometry, material);
   points.frustumCulled = false;
   const speaker = buildSpeaker();
@@ -228,6 +391,7 @@ function buildParticles() {
     points,
     geometry,
     material,
+    map,
     home,
     phase,
     positions,
@@ -264,14 +428,15 @@ export function LimboScene({
   const waveGroup = useRef(0);
   const crests = useRef<number[]>([]);
   const thump = useRef({ age: 0, wait: 3.6, prev: 0 });
+  /** Clock for the arc noise. Starts at zero so the shader keeps float precision, and stops under reduced motion. */
+  const arcTime = useRef(0);
   const field = useMemo(() => buildParticles(), []);
 
   useEffect(() => {
     return () => {
       field.geometry.dispose();
       field.material.dispose();
-      const map = field.material.map;
-      if (map) map.dispose();
+      field.map.dispose();
     };
   }, [field]);
 
@@ -318,6 +483,8 @@ export function LimboScene({
     const open = smoothstep(0, FLIGHT * 0.24, flight.current);
     const carry = smoothstep(0, FLIGHT * 0.58, flight.current);
     const form = kind === "music" ? smoothstep(FLIGHT * 0.62, FLIGHT, flight.current) : 0;
+    // Software: the sphere charges as it settles top-right. An offset on the GPU, homes stay on the sphere.
+    const charge = kind === "software" ? smoothstep(FLIGHT * 0.5, FLIGHT, flight.current) : 0;
     const flightYaw = smoothstep(0, FLIGHT * 0.52, flight.current) * 1.15 * (kind === "software" ? -1 : 1);
     if (carry > 0) {
       const landX = (kind === "software" ? 1 : -1) * halfW * 0.62;
@@ -594,6 +761,15 @@ export function LimboScene({
 
     field.geometry.attributes.position.needsUpdate = true;
     field.geometry.attributes.color.needsUpdate = true;
+
+    if (!reduce) arcTime.current += dt;
+    const uniforms = field.material.uniforms;
+    // Same numbers three feeds PointsMaterial: size * pixelRatio and half the canvas height.
+    uniforms.size.value = POINT_SIZE * state.gl.getPixelRatio();
+    uniforms.scale.value = state.size.height * 0.5;
+    uniforms.uTime.value = arcTime.current;
+    uniforms.uElectric.value = charge;
+    (uniforms.uCenter.value as Vector3).set(orbX, orbY, 0);
 
     const group = groupRef.current;
     if (group) {
